@@ -1,0 +1,10 @@
+# detectron2 — install separately (GPU/CUDA version must match your setup)
+# Example (CUDA 11.8 / torch 2.0):
+#   pip install 'git+https://github.com/facebookresearch/detectron2.git'
+
+torch>=1.10
+numpy
+Pillow
+pycocotools
+opencv-python
+shapely
