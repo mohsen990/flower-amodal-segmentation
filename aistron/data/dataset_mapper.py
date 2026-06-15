@@ -259,13 +259,18 @@ class AmodalDatasetMapper:
         if len(annos) and "amodal_segm" in annos[0]:
             amodal_segms = [obj["amodal_segm"] for obj in annos]
             visible_segms = [obj["visible_segm"] for obj in annos]
-            background_objs_segms = [obj.get("background_objs_segm") or [[0,0,1,0,1,1]] for obj in annos]
-            occluder_segms = [obj.get("occluder_segm") or [[0,0,1,0,1,1]] for obj in annos]
+            background_objs_segms = [obj["background_objs_segm"] if obj.get("background_objs_segm") is not None else (obj["occluder_segm"] if obj.get("occluder_segm") is not None else [[0,0,1,0,1,1]]) for obj in annos]
+            occluder_segms = [obj["occluder_segm"] if obj.get("occluder_segm") is not None else [[0,0,1,0,1,1]] for obj in annos]
 
             target.gt_amodal_masks = self._segms_to_polygon_masks(amodal_segms, mask_format, image_size)
             target.gt_visible_masks = self._segms_to_polygon_masks(visible_segms, mask_format, image_size)
             target.gt_background_objs_masks = self._segms_to_polygon_masks(background_objs_segms, mask_format, image_size)
             target.gt_occluder_masks = self._segms_to_polygon_masks(occluder_segms, mask_format, image_size)
+
+            # 1 for Plant B (fully visible occluder), 0 for Plant A (occluded background)
+            target.gt_is_occluder = torch.tensor(
+                [int(obj.get("is_occluder", 0)) for obj in annos], dtype=torch.uint8
+            )
 
             # for using default mask heads in detectron2 (maskrcnn)
             target.gt_masks = target.gt_amodal_masks

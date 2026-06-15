@@ -1,0 +1,69 @@
+# AISFormer v2 — improved occluded mask prediction
+# Changes vs v1:
+#   - invisible mask loss ×2 (in mask_head.py)
+#   - deeper transformer: N_LAYERS 1→2, N_HEADS 2→4
+#   - more training samples per image: BATCH_SIZE_PER_IMAGE 20→32
+#   - longer training: 50k iters, LR steps adjusted
+#   - stronger augmentation: random flip + multi-scale
+#   - output in separate dir so v1 checkpoint is preserved
+#
+# Train:
+#   cd ~/flower_aistron
+#   FLOWER_DATA_ROOT=~/datasets/flower_amodal \
+#   /home/mohsen/det2env/bin/python3 train_net.py \
+#     --config-file configs/Flower/aisformer_R50_flower_v2.yaml \
+#     --num-gpus 1
+
+_BASE_: "../KINS2020/aisformer_R50_FPN_kins2020_6ep_bs1_lowmem.yaml"
+
+MODEL:
+  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  BACKBONE:
+    FREEZE_AT: 2
+  RESNETS:
+    DEPTH: 50
+  ROI_HEADS:
+    NUM_CLASSES: 12
+    BATCH_SIZE_PER_IMAGE: 32              # was 20 — more proposals trained per image
+    SCORE_THRESH_TEST: 0.05
+  ROI_MASK_HEAD:
+    POOLER_RESOLUTION: 28
+  RPN:
+    PRE_NMS_TOPK_TEST: 200
+    POST_NMS_TOPK_TEST: 50
+
+AISFORMER:
+  INVISIBLE_MASK_LOSS: True
+  N_LAYERS: 2                             # was 1 — deeper transformer
+  N_HEADS: 4                              # was 2 — more attention heads
+  EMB_DIM: 256
+
+INPUT:
+  MASK_FORMAT: bitmask
+  MIN_SIZE_TRAIN: (400, 480, 512, 544, 576, 608, 640, 672, 704, 736)
+  MAX_SIZE_TRAIN: 1024
+  MIN_SIZE_TEST: 400
+  MAX_SIZE_TEST: 640
+  RANDOM_FLIP: "horizontal"              # always flip for augmentation
+
+DATASETS:
+  TRAIN: ("flower_amodal_train",)
+  TEST:  ("flower_amodal_val",)
+
+DATALOADER:
+  NUM_WORKERS: 2
+
+SOLVER:
+  IMS_PER_BATCH: 1
+  BASE_LR: 0.001
+  MAX_ITER: 50000                         # was 30k
+  STEPS: (35000, 45000)                  # adjusted for 50k
+  CHECKPOINT_PERIOD: 5000
+  WARMUP_ITERS: 500
+  WARMUP_FACTOR: 0.001
+  WEIGHT_DECAY: 0.0001
+
+TEST:
+  EVAL_PERIOD: 5000
+
+OUTPUT_DIR: "./output/flower_aisformer_v2"

@@ -150,12 +150,16 @@ class AISFormer(nn.Module):
 
         gt_classes = []
         gt_masks = []
+        gt_occluder_flags = []
         for instances_per_image in instances:
             if len(instances_per_image) == 0:
                 continue
             if not cls_agnostic_mask:
                 gt_classes_per_image = instances_per_image.gt_classes.to(dtype=torch.int64)
                 gt_classes.append(gt_classes_per_image)
+
+            if instances_per_image.has("gt_is_occluder"):
+                gt_occluder_flags.append(instances_per_image.gt_is_occluder)
 
             if mask_type == 'invisible':
                 gt_amodal_masks_per_image = instances_per_image.get('gt_amodal_masks').crop_and_resize(
@@ -212,7 +216,17 @@ class AISFormer(nn.Module):
                 vis_mask = torch.stack([vis_mask] * 3, axis=0)
                 storage.put_image(name + f" ({idx})", vis_mask)
 
-        mask_loss = F.binary_cross_entropy_with_logits(pred_mask_logits, gt_masks, reduction="mean")
+        # For invisible and bo_mask losses: weight Plant A (occluded) at 1.0,
+        # Plant B (fully-visible occluder) at 0.1 so it can't dominate with trivial 0-GT.
+        if mask_type in ('invisible', 'gt_background_objs_masks') and gt_occluder_flags:
+            is_occ = cat(gt_occluder_flags, dim=0).float().to(pred_mask_logits.device)
+            per_inst_w = 1.0 - 0.9 * is_occ          # Plant A=1.0, Plant B=0.1
+            w = per_inst_w[:, None, None].expand_as(pred_mask_logits)
+            mask_loss = F.binary_cross_entropy_with_logits(
+                pred_mask_logits, gt_masks, weight=w, reduction="sum"
+            ) / max(w.sum().item(), 1.0)
+        else:
+            mask_loss = F.binary_cross_entropy_with_logits(pred_mask_logits, gt_masks, reduction="mean")
         return mask_loss
 
     @staticmethod
@@ -334,13 +348,28 @@ class AISFormer(nn.Module):
                 "loss_vi_mask": loss_vi_mask,
                 "loss_bo_mask": loss_bo_mask,
                 "loss_a_mask": loss_a_mask,
-                "loss_invisible_mask": loss_invisible_mask
+                "loss_invisible_mask": loss_invisible_mask * 2.0,  # upweight hidden-part loss
             }
         else:
-            ## Inference forward
-            vi_masks, bo_masks, a_masks, invisible_masks = self.layers(x)
-            self.mask_inference(vi_masks, instances, 'pred_visible_masks')
-            self.mask_inference(a_masks, instances, 'pred_amodal_masks')
-            self.mask_inference(bo_masks, instances, 'pred_occluding_masks')
+            ## Inference forward — chunk proposals to stay within 4 GB GPU memory.
+            ## The transformer attention is O(N × H² × W²): processing all N proposals
+            ## at once overflows on large images. Chunk size 8 keeps peak usage ~200 MB.
+            CHUNK = 8
+            all_vi, all_bo, all_a, all_inv = [], [], [], []
+            for i in range(0, x.shape[0], CHUNK):
+                chunk = x[i:i + CHUNK]
+                vi, bo, a, inv = self.layers(chunk)
+                all_vi.append(vi)
+                all_bo.append(bo)
+                all_a.append(a)
+                all_inv.append(inv)
+                torch.cuda.empty_cache()
+            vi_masks        = torch.cat(all_vi,  dim=0)
+            bo_masks        = torch.cat(all_bo,  dim=0)
+            a_masks         = torch.cat(all_a,   dim=0)
+            invisible_masks = torch.cat(all_inv, dim=0)
+            self.mask_inference(vi_masks,        instances, 'pred_visible_masks')
+            self.mask_inference(a_masks,         instances, 'pred_amodal_masks')
+            self.mask_inference(bo_masks,        instances, 'pred_occluding_masks')
             self.mask_inference(invisible_masks, instances, 'pred_occluded_masks')
             return instances

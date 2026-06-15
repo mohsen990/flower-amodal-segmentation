@@ -1,8 +1,13 @@
-# AISFormer — ImageNet pretrained + 56×56 mask head on Flower dataset
+# AISFormer — ImageNet pretrained + 56×56 mask head on Flower dataset (102 categories)
 #
-# Usage:
+# 1. Convert dataset (first time only):
+#   python convert_flower_dataset.py \
+#       --src /mnt/e/Dataset/flowers_amodal_output \
+#       --dst ~/datasets/flower_amodal
+#
+# 2. Train:
 #   cd ~/flower_aistron
-#   FLOWER_DATA_ROOT=/mnt/d/flower_aistron \
+#   FLOWER_DATA_ROOT=~/datasets/flower_amodal \
 #   python train_net.py \
 #     --config-file configs/Flower/aisformer_R50_flower_56x56_imagenet.yaml \
 #     --num-gpus 1
@@ -16,21 +21,21 @@ MODEL:
   RESNETS:
     DEPTH: 50
   ROI_HEADS:
-    NUM_CLASSES: 1                        # set to number of flower categories
+    NUM_CLASSES: 12                       # 12 flower categories
     BATCH_SIZE_PER_IMAGE: 20
-    SCORE_THRESH_TEST: 0.01
+    SCORE_THRESH_TEST: 0.05              # higher threshold → fewer instances reach mask head
   ROI_MASK_HEAD:
     POOLER_RESOLUTION: 28                 # 56×56 mask output
   RPN:
-    PRE_NMS_TOPK_TEST: 600
-    POST_NMS_TOPK_TEST: 300
+    PRE_NMS_TOPK_TEST: 200               # reduced from 600 to limit proposals on 4 GB GPU
+    POST_NMS_TOPK_TEST: 50               # reduced from 300; attention is O(N×784×784)
 
 INPUT:
   MASK_FORMAT: bitmask
   MIN_SIZE_TRAIN: (400, 480, 512, 544, 576, 608, 640, 672)
   MAX_SIZE_TRAIN: 1024
-  MIN_SIZE_TEST: 640
-  MAX_SIZE_TEST: 1024
+  MIN_SIZE_TEST: 400                     # reduced from 640 to save memory during eval
+  MAX_SIZE_TEST: 640                     # reduced from 1024
 
 DATASETS:
   TRAIN: ("flower_amodal_train",)

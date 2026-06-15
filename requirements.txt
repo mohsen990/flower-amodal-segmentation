@@ -1,10 +1,37 @@
-# detectron2 — install separately (GPU/CUDA version must match your setup)
-# Example (CUDA 11.8 / torch 2.0):
+# ── flower_aistron requirements ───────────────────────────────────────────────
+# Tested on: Python 3.12, CUDA 11.8, RTX 3050 Ti (4 GB)
+#
+# INSTALL ORDER (do NOT just pip install -r requirements.txt blindly):
+#
+# Step 1 — PyTorch with CUDA 11.8
+#   pip install torch==2.7.1+cu118 torchvision==0.22.1+cu118 torchaudio==2.7.1+cu118 \
+#       --index-url https://download.pytorch.org/whl/cu118
+#
+#   For CUDA 12.x:
+#   pip install torch torchvision torchaudio \
+#       --index-url https://download.pytorch.org/whl/cu121
+#
+# Step 2 — Detectron2 (build from source — prebuilt wheels often mismatch torch)
 #   pip install 'git+https://github.com/facebookresearch/detectron2.git'
+#
+# Step 3 — Everything else
+#   pip install -r requirements.txt
 
-torch>=1.10
-numpy
-Pillow
-pycocotools
-opencv-python
-shapely
+# ── detectron2 dependencies ───────────────────────────────────────────────────
+fvcore==0.1.5.post20221221
+iopath==0.1.9
+omegaconf==2.3.0
+hydra-core==1.3.2
+
+# ── vision & annotation ───────────────────────────────────────────────────────
+numpy==2.3.5
+pycocotools==2.0.11
+opencv-python==4.13.0.92
+pillow==12.0.0
+
+# ── visualisation & paper figures ─────────────────────────────────────────────
+matplotlib==3.10.8
+
+# ── GPU monitoring (benchmark_inference.py) ───────────────────────────────────
+nvidia-ml-py==13.595.45
+pynvml==13.0.1

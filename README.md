@@ -1,74 +1,227 @@
 # flower_aistron
 
-Amodal instance segmentation of flowers using [AISFormer](https://github.com/UARK-AICV/AISFormer), built on the aistron framework.
+Amodal instance segmentation of flowers using [AISFormer](https://github.com/UARK-AICV/AISFormer),
+built on the [aistron](https://github.com/UARK-AICV/aistron) framework (Detectron2-based).
+
+---
+
+## Results — FlowerAmodal v3
+
+**Validation set** (1,516 images) — model_final.pth (30k iterations, N_LAYERS=2, FP16):
+
+| Task | AP | AP50 | AP75 | APl | AR |
+|---|---|---|---|---|---|
+| amodal_segm | 85.12 | 98.35 | 95.46 | 88.37 | 69.41 |
+| visible_segm | 90.11 | 98.44 | 97.23 | 92.03 | 71.84 |
+| bbox | 81.83 | 98.40 | 95.34 | 81.83 | 85.90 |
+
+**Test set** (1,586 images, unseen from training) — mask IoU:
+
+| IoU threshold | F1 | Precision | Recall | Confidence |
+|---|---|---|---|---|
+| ≥ 0.50 | **0.9834** | 0.9936 | 0.9735 | 0.90 |
+| ≥ 0.75 | **0.9548** | 0.9646 | 0.9451 | 0.90 |
+
+**Inference** (RTX 3050 Ti, 4 GB VRAM, batch=1):
+
+| Metric | Value |
+|---|---|
+| Parameters | 57.4 M |
+| Checkpoint size | 438 MB |
+| Latency / image | 146.2 ms ± 33.2 ms |
+| Throughput | 6.84 img/s |
+| Peak GPU memory | 966 MB (24% of 4 GB) |
+| GPU utilisation | 67% |
+
+---
 
 ## Setup
 
 ```bash
-# 1. Install detectron2 (match your CUDA/torch version)
-pip install 'git+https://github.com/facebookresearch/detectron2.git'
+# Python environment (det2env has Detectron2 + all dependencies)
+/home/mohsen/det2env/bin/python3 --version
 
-# 2. Install this package
+# Clone and enter project
 cd ~/flower_aistron
-pip install -e .
 ```
 
-## Dataset
+---
 
-Your source dataset must be COCO-like with two extra fields per annotation:
-- `segmentation` — visible (modal) mask
-- `amodal_segmentation` — full amodal mask (RLE)
+## Dataset — FlowerAmodal v3
 
-Convert to aistron format:
+**Source:** 2-category subset of Oxford 102 Flower dataset (buttercup, bishop of llandaff).
+**Annotation:** COCO format extended with `amodal_segm`, `visible_segm`, `occluder_segm`,
+`amodal_bbox`, `visible_bbox`, `occlusion_fraction`, `is_occluder`.
+
+### Step 1 — Convert source dataset
 
 ```bash
 python convert_flower_dataset.py \
-    --src /mnt/d/FlowerDataset \
-    --dst ~/datasets/flower_aistron \
-    --copy-images          # omit to use symlinks
+    --src /mnt/e/Dataset/flowers_v3_trainval \
+    --dst ~/datasets/flower_amodal_v3 \
+    --copy-images
 ```
 
-Expected output:
+Add test split separately (if in a different folder):
+
+```bash
+python convert_flower_dataset.py \
+    --src /mnt/e/Dataset/flowers_v3_test \
+    --dst ~/datasets/flower_amodal_v3 \
+    --test-json /mnt/e/Dataset/flowers_v3_test/annotations/flowers_test.json \
+    --copy-images
 ```
-flower_aistron/
+
+### Step 2 — (Optional) Generate synthetic CopyPaste occlusions
+
+```bash
+python generate_synthetic_occlusions.py \
+    --src ~/datasets/flower_amodal_v3 \
+    --dst ~/datasets/flower_amodal_v3_aug \
+    --multiplier 2 \
+    --overlap-min 0.10 --overlap-max 0.80
+```
+
+Expected layout:
+```
+~/datasets/flower_amodal_v3/
 ├── annotations/
-│   ├── train_amodal.json
-│   └── val_amodal.json
+│   ├── train_amodal.json   (6,062 images, 12,124 annotations)
+│   ├── val_amodal.json     (1,516 images,  3,032 annotations)
+│   └── test_amodal.json    (1,586 images,  3,172 annotations)
 ├── train/images/
-└── val/images/
+├── val/images/
+└── test/images/
 ```
+
+---
 
 ## Training
 
 ```bash
 cd ~/flower_aistron
-FLOWER_DATA_ROOT=~/datasets/flower_aistron \
-python train_net.py \
-    --config-file configs/Flower/aisformer_R50_flower_56x56_imagenet.yaml \
+FLOWER_DATA_ROOT=~/datasets/flower_amodal_v3 \
+/home/mohsen/det2env/bin/python3 train_net.py \
+    --config-file configs/Flower/aisformer_R50_flower_v2_2cat.yaml \
     --num-gpus 1
 ```
 
-Key config knobs (`configs/Flower/aisformer_R50_flower_56x56_imagenet.yaml`):
-- `MODEL.ROI_HEADS.NUM_CLASSES` — number of flower categories (default `1`)
-- `SOLVER.MAX_ITER` / `SOLVER.STEPS` — training schedule
-- `OUTPUT_DIR` — where checkpoints are saved
+Key config (configs/Flower/aisformer_R50_flower_v2_2cat.yaml):
 
-## Evaluation
+| Parameter | Value |
+|---|---|
+| NUM_CLASSES | 2 |
+| POOLER_RESOLUTION | 28 (→ 56×56 masks) |
+| N_LAYERS | 2 |
+| N_HEADS | 2 |
+| EMB_DIM | 256 |
+| MAX_ITER | 30,000 |
+| AMP (FP16) | Enabled |
+| BATCH_SIZE_PER_IMAGE | 16 |
+
+---
+
+## Evaluation (COCO AP)
 
 ```bash
-FLOWER_DATA_ROOT=~/datasets/flower_aistron \
-python train_net.py \
-    --config-file configs/Flower/aisformer_R50_flower_56x56_imagenet.yaml \
+FLOWER_DATA_ROOT=~/datasets/flower_amodal_v3 \
+/home/mohsen/det2env/bin/python3 train_net.py \
+    --config-file configs/Flower/aisformer_R50_flower_v2_2cat.yaml \
     --eval-only \
-    MODEL.WEIGHTS ./output/flower_aisformer/model_best.pth
+    MODEL.WEIGHTS output/flower_aisformer_v2_2cat/model_final.pth
 ```
 
-## Inference visualisation
+---
+
+## F1 / Precision / Recall
 
 ```bash
-FLOWER_DATA_ROOT=~/datasets/flower_aistron \
-python inference_examples.py \
-    --weights ./output/flower_aisformer/model_best.pth \
-    --split val --num-images 20 \
-    --output-dir /mnt/d/flower_inference
+# Validation set
+FLOWER_DATA_ROOT=~/datasets/flower_amodal_v3 \
+/home/mohsen/det2env/bin/python3 evaluate_f1_flower.py \
+    --config-file configs/Flower/aisformer_R50_flower_v2_2cat.yaml \
+    --weights output/flower_aisformer_v2_2cat/model_final.pth \
+    --split val --use-mask-iou --iou-thresholds 0.5 0.75
+
+# Test set (unseen)
+FLOWER_DATA_ROOT=~/datasets/flower_amodal_v3 \
+/home/mohsen/det2env/bin/python3 evaluate_f1_flower.py \
+    --config-file configs/Flower/aisformer_R50_flower_v2_2cat.yaml \
+    --weights output/flower_aisformer_v2_2cat/model_final.pth \
+    --split test --use-mask-iou --iou-thresholds 0.5 0.75
+```
+
+---
+
+## Inference Visualisation (3-panel: Original | Predicted | GT)
+
+```bash
+FLOWER_DATA_ROOT=~/datasets/flower_amodal_v3 \
+/home/mohsen/det2env/bin/python3 inference_examples.py \
+    --config-file configs/Flower/aisformer_R50_flower_v2_2cat.yaml \
+    --weights output/flower_aisformer_v2_2cat/model_final.pth \
+    --split test --num-images 25 --output-dir /mnt/e/flower_inference_test
+```
+
+Panels: **Left** = original image · **Centre** = predicted amodal mask (colour fill + contour) ·
+**Right** = GT (green = visible region, red = hidden/occluded region).
+Instances sorted front→back by occlusion fraction.
+
+---
+
+## Inference Benchmark
+
+```bash
+FLOWER_DATA_ROOT=~/datasets/flower_amodal_v3 \
+/home/mohsen/det2env/bin/python3 benchmark_inference.py \
+    --config-file configs/Flower/aisformer_R50_flower_v2_2cat.yaml \
+    --weights output/flower_aisformer_v2_2cat/model_final.pth
+```
+
+---
+
+## Paper
+
+The companion paper is in [paper/Aflower.tex](paper/Aflower.tex).
+Figures are generated by:
+
+```bash
+cd paper/figures
+/home/mohsen/det2env/bin/python3 fig_coco_metrics.py
+/home/mohsen/det2env/bin/python3 fig_f1_convergence.py
+/home/mohsen/det2env/bin/python3 fig_pipeline.py
+```
+
+Compile with:
+```bash
+cd paper
+pdflatex Aflower.tex
+pdflatex Aflower.tex   # second pass for references
+```
+
+---
+
+## File Layout
+
+```
+flower_aistron/
+├── train_net.py                  — main training / eval entry point
+├── register_flower_dataset.py    — Detectron2 dataset registration
+├── convert_flower_dataset.py     — source → aistron JSON conversion
+├── generate_synthetic_occlusions.py — CopyPaste offline augmentation
+├── evaluate_f1_flower.py         — F1/Precision/Recall sweep
+├── inference_examples.py         — 3-panel visualisation
+├── benchmark_inference.py        — latency / memory profiling
+├── aisformer/
+│   └── mask_head.py              — transformer mask head (is_occluder weighting)
+├── aistron/data/
+│   └── dataset_mapper.py         — amodal dataset mapper (gt_is_occluder tensor)
+├── configs/Flower/
+│   └── aisformer_R50_flower_v2_2cat.yaml — active training config
+└── paper/
+    ├── Aflower.tex               — IEEE conference paper
+    └── figures/
+        ├── fig_coco_metrics.py / .pdf
+        ├── fig_f1_convergence.py / .pdf
+        └── fig_pipeline.py / .pdf
 ```

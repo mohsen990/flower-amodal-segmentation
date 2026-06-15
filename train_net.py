@@ -31,6 +31,8 @@ from aistron.config import add_aistron_config
 import aisformer
 from aisformer import add_aisformer_config
 import register_flower_dataset  # noqa: F401 — registers flower datasets
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def build_evaluator(cfg, dataset_name, output_folder=None):
