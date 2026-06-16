@@ -225,3 +225,33 @@ flower_aistron/
         ├── fig_f1_convergence.py / .pdf
         └── fig_pipeline.py / .pdf
 ```
+
+---
+
+## References
+
+This project builds directly on:
+
+| Project | Repo | Paper |
+|---|---|---|
+| **AISFormer** — transformer amodal mask head | [UARK-AICV/AISFormer](https://github.com/UARK-AICV/AISFormer) | Tran et al., BMVC 2022 |
+| **aistron** — amodal segmentation framework (Detectron2) | [UARK-AICV/aistron](https://github.com/UARK-AICV/aistron) | — |
+| **Detectron2** — object detection platform | [facebookresearch/detectron2](https://github.com/facebookresearch/detectron2) | Wu et al., 2019 |
+| **Oxford 102 Flower Dataset** — source images | [VGG / Oxford](https://www.robots.ox.ac.uk/~vgg/data/flowers/102) | Nilsback & Zisserman, ICVGIP 2008 |
+
+```bibtex
+@inproceedings{tran2022aisformer,
+  title     = {AISFormer: Amodal Instance Segmentation with Transformer},
+  author    = {Tran, Minh and Vo, Khoa and Yamazaki, Kashu and Fernandes, Arthur and Kidd, Michael and Le, Ngan},
+  booktitle = {Proc. British Machine Vision Conf. (BMVC)},
+  year      = {2022}
+}
+
+@misc{nilsback2008flower,
+  author    = {Nilsback, Maria-Elena and Zisserman, Andrew},
+  title     = {Automated Flower Classification over a Large Number of Classes},
+  booktitle = {Proc. Indian Conf. Computer Vision, Graphics and Image Processing (ICVGIP)},
+  pages     = {722--729},
+  year      = {2008}
+}
+```
