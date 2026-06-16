@@ -6,3 +6,6 @@ output/
 datasets/
 *.pth
 *.pkl
+
+# paper
+paper/
